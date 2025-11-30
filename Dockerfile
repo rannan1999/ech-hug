@@ -1,20 +1,21 @@
-# 選擇 Alpine Linux 作為基礎映像，因為它輕量
-FROM alpine:latest
+# 選擇 Debian 作為基礎映像
+FROM debian:latest
 
 # 設定工作目錄
 WORKDIR /app
 
 # 安裝必要的套件：bash 和 curl
-RUN apk update && \
-    apk add --no-cache bash curl
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends bash curl && \
+    rm -rf /var/lib/apt/lists/*
 
 # 設定環境變數的預設值，這些變數對應腳本的配置
 # 注意：WSPORT 預設為空，在 start.sh 中會檢查並隨機分配
 ENV OPERA=0 \
-    COUNTRY=AM \
-    IPS=4 \
-    TOKEN="" \
-    WSPORT=""
+    COUNTRY=AM \
+    IPS=4 \
+    TOKEN="" \
+    WSPORT=""
 
 # 將啟動腳本複製到容器中
 COPY start.sh .
