@@ -24,3 +24,5 @@ WSPORT	 隨機	ECH 服務在容器內部監聽的端口。	任何未使用的端
 IPS	     4	Cloudflared 連接模式。	4 (IPv4) / 6 (IPv6)
 TOKEN	   "" (空)	ECH Tunnel 的身份令牌。	任何字串
 
+ARGO_DOMAIN 固定隧道名
+ARGO_AUTH 隧道的TOKEN
