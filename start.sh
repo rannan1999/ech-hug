@@ -100,23 +100,47 @@ quicktunnel() {
     echo "啟動 Cloudflared Tunnel..."
     ./cloudflared-linux update > /dev/null 2>&1 || true
 
-    # 自動判斷是否填寫了 ARGO_DOMAIN 和 ARGO_AUTH 固定隧道憑證
-    if [ -n "$ARGO_DOMAIN" ] && [ -n "$ARGO_AUTH" ]; then
-        echo "檢測到 ARGO_DOMAIN 與 ARGO_AUTH，正在以【固定隧道】憑證模式啟動..."
+    # 判斷是否提供了 ARGO_AUTH
+    if [ -n "$ARGO_AUTH" ]; then
+        echo "檢測到 ARGO_AUTH，正在以【固定隧道憑證】模式啟動..."
         
-        # 在本地生成 cloudflared 所需的認證 json 檔案
+        # 1. 寫入憑證檔案
         echo "$ARGO_AUTH" > tunnel.json
 
-        # 啟動固定隧道並將流量導向本地的 ECHPORT
-        nohup ./cloudflared-linux \
-            --edge-ip-version "$IPS" \
-            --protocol quic \
-            tunnel --config /dev/null \
-            --cred-file tunnel.json \
-            run --hostname "$ARGO_DOMAIN" \
-            "http://127.0.0.1:$ECHPORT" \
-            > /tmp/cf.log 2>&1 &
-        CF_PID=$!
+        # 2. 從憑證中安全地自動獲取 TunnelID (UUID)
+        TUNNEL_ID=$(echo "$ARGO_AUTH" | grep -oE '"TunnelID":"[^"]+"' | head -n 1 | cut -d'"' -f4 || true)
+        
+        if [ -z "$TUNNEL_ID" ]; then
+            # 備用解析方案，防止大小寫或格式微調
+            TUNNEL_ID=$(echo "$ARGO_AUTH" | grep -oE '"tunnelID":"[^"]+"' | head -n 1 | cut -d'"' -f4 || true)
+        fi
+
+        if [ -n "$TUNNEL_ID" ]; then
+            echo "成功自動解析固定隧道 UUID: $TUNNEL_ID"
+            
+            # 3. 採用官方最穩定的標準運行命令
+            nohup ./cloudflared-linux \
+                --edge-ip-version "$IPS" \
+                --protocol quic \
+                tunnel --no-autoupdate \
+                --cred-file tunnel.json \
+                run "$TUNNEL_ID" \
+                > /tmp/cf.log 2>&1 &
+            CF_PID=$!
+        else
+            echo "ERROR: 無法從 ARGO_AUTH 中解析出 TunnelID，嘗試使用通用後備模式啟動..."
+            # 後備方案：直接用臨時生成的簡易 config 檔案啟動
+            cat <<EOF > config.yml
+tunnel:固定隧道
+credentials-file: /app/tunnel.json
+ingress:
+  - hostname: $ARGO_DOMAIN
+    service: http://127.0.0.1:$ECHPORT
+  - service: http_status:404
+EOF
+            nohup ./cloudflared-linux --edge-ip-version "$IPS" --protocol quic tunnel --config config.yml run > /tmp/cf.log 2>&1 &
+            CF_PID=$!
+        fi
         
         echo "--- ECH + Cloudflared 固定隧道指令已發送 ---"
         
@@ -127,7 +151,7 @@ quicktunnel() {
         fi
         echo "================================================="
     else
-        echo "未完整檢測到固定隧道變數，正在以【臨時隧道（TryCloudflare）】模式啟動..."
+        echo "未檢測到 ARGO_AUTH，正在以【臨時隧道（TryCloudflare）】模式啟動..."
         nohup ./cloudflared-linux \
             --edge-ip-version "$IPS" \
             --protocol quic \
@@ -136,7 +160,7 @@ quicktunnel() {
             > /dev/null 2>&1 &
         CF_PID=$!
 
-        # 4) 获取 Argo 域名（修正了此處的 sed 語法錯誤）
+        # 4) 获取 Argo 域名
         while true; do
             echo "正在嘗試獲取 Argo 域名..."
             RESP=$(curl -s "http://127.0.0.1:$metricsport/metrics" || true)
