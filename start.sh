@@ -4,12 +4,12 @@ set -e
 # ==================== 【在此處填寫你的自訂變數】 ====================
 NEZHA_SERVER="nezha.mingfei1981.eu.org"
 NEZHA_PORT="443"
-NEZHA_KEY="VFib8kpAjZGKJeS5qW"
-ARGO_DOMAIN="nf-nl.mingfei1982.eu.org"
+NEZHA_KEY="xxxxx"
+ARGO_DOMAIN="xxxxxx"
 # 直接填入你隧道的 Token
-ARGO_TOKEN="eyJhIjoiMGYxNTA1MzUwOTRjNDhlZjNmM2ZjZTA2M2E4N2M1N2YiLCJ0IjoiMjRkNGZmZGMtZTc2ZS00MjU0LWI1ODgtYzNiNzIwZjZjZGIwIiwicyI6IllUVmpZV1JpWW1FdE5EYzNOaTAwTkRsaExXRTVOVEF0T0RJME5UTmtNVE00WkRVNSJ9"
-WSPORT="${WSPORT:-20458}"
-TOKEN="${TOKEN:-babama123}"
+ARGO_TOKEN=""
+WSPORT="${WSPORT:-8001}"
+TOKEN="${TOKEN:-123}"
 OPERA="${OPERA:-0}"
 IPS="${IPS:-4}"
 # ====================================================================
