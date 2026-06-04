@@ -95,33 +95,39 @@ quicktunnel() {
     nohup "${ECH_ARGS[@]}" > /dev/null 2>&1 &
     ECH_PID=$!
 
-    # 3) Cloudflared -> 引導至專屬變數 CF_TOKEN
+    # 3) Cloudflared -> 判斷變數
     metricsport=$(get_free_port)
     echo "啟動 Cloudflared Tunnel..."
     ./cloudflared-linux update > /dev/null 2>&1 || true
 
-    # 改為判斷是否設置了全新的 CF_TOKEN
-    if [ -n "$CF_TOKEN" ]; then
-        echo "檢測到固定隧道 CF_TOKEN，正在以【固定隧道】模式啟動..."
+    # 自動判斷是否填寫了 ARGO_DOMAIN 和 ARGO_AUTH 固定隧道憑證
+    if [ -n "$ARGO_DOMAIN" ] && [ -n "$ARGO_AUTH" ]; then
+        echo "檢測到 ARGO_DOMAIN 與 ARGO_AUTH，正在以【固定隧道】憑證模式啟動..."
+        
+        # 在本地生成 cloudflared 所需的認證 json 檔案
+        echo "$ARGO_AUTH" > tunnel.json
+
+        # 啟動固定隧道並將流量導向本地的 ECHPORT
         nohup ./cloudflared-linux \
             --edge-ip-version "$IPS" \
             --protocol quic \
-            tunnel --no-autoupdate run --token "$CF_TOKEN" \
+            tunnel --config /dev/null \
+            --cred-file tunnel.json \
+            run --hostname "$ARGO_DOMAIN" \
+            "http://127.0.0.1:$ECHPORT" \
             > /tmp/cf.log 2>&1 &
         CF_PID=$!
         
         echo "--- ECH + Cloudflared 固定隧道指令已發送 ---"
         
-        sleep 2
-        echo "=== [DEBUG] 檢查 Cloudflared 啟動初期日誌 ==="
+        sleep 3
+        echo "=== [DEBUG] 檢查 Cloudflared 固定隧道啟動日誌 ==="
         if [ -f /tmp/cf.log ]; then
             cat /tmp/cf.log
-        else
-            echo "未找到日誌檔案 /tmp/cf.log"
         fi
-        echo "============================================="
+        echo "================================================="
     else
-        echo "未檢測到 CF_TOKEN，正在以【臨時隧道（TryCloudflare）】模式啟動..."
+        echo "未完整檢測到固定隧道變數，正在以【臨時隧道（TryCloudflare）】模式啟動..."
         nohup ./cloudflared-linux \
             --edge-ip-version "$IPS" \
             --protocol quic \
@@ -130,14 +136,14 @@ quicktunnel() {
             > /dev/null 2>&1 &
         CF_PID=$!
 
-        # 4) 获取 Argo 域名
+        # 4) 获取 Argo 域名（修正了此處的 sed 語法錯誤）
         while true; do
             echo "正在嘗試獲取 Argo 域名..."
             RESP=$(curl -s "http://127.0.0.1:$metricsport/metrics" || true)
 
             if echo "$RESP" | grep -q 'userHostname='; then
                 echo "獲取成功，正在解析..."
-                DOMAIN=$(echo "$RESP" | grep 'userHostname="' | sed -E 's/s/.*userHostname="https?:\/\/([^"]+)".*/\1/')
+                DOMAIN=$(echo "$RESP" | grep 'userHostname="' | sed -E 's/.*userHostname="https?:\/\/([^"]+)".*/\1/')
 
                 echo "--- ECH + Cloudflared 臨時隧道啟動成功 ---"
                 echo "連接為: $DOMAIN:443"
