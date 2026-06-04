@@ -8,8 +8,10 @@ get_free_port() {
 
 quicktunnel() {
     echo "--- 正在強制設定 DNS 為 1.1.1.1/1.0.0.1 ---"
-    echo "nameserver 1.1.1.1" > /etc/resolv.conf 2>/dev/null || echo "WARN: DNS 設定失敗，已跳過。"
+    # 加上 2>/dev/null || true 容錯，防止唯讀檔案系統導致腳本中斷
+    echo "nameserver 1.1.1.1" > /etc/resolv.conf 2>/dev/null || echo "WARN: DNS 強制設定失敗（唯讀檔案系統），已跳過。"
     echo "nameserver 1.0.0.1" >> /etc/resolv.conf 2>/dev/null || true
+
     echo "--- 正在下載服務二進制文件 ---"
 
     local ARCH
@@ -99,38 +101,49 @@ quicktunnel() {
 
     # 3) Cloudflared -> ECHPORT
     metricsport=$(get_free_port)
-    echo "啟動 Cloudflared Tunnel (metrics port: $metricsport)..."
+    echo "啟動 Cloudflared Tunnel..."
     ./cloudflared-linux update > /dev/null 2>&1 || true
 
-    nohup ./cloudflared-linux \
-        --edge-ip-version "$IPS" \
-        --protocol http2 \
-        tunnel --url "127.0.0.1:$ECHPORT" \
-        --metrics "0.0.0.0:$metricsport" \
-        > /dev/null 2>&1 &
-    CF_PID=$!
+    # 判斷變數中是否有固定隧道的 TOKEN
+    if [ -n "$TOKEN" ]; then
+        echo "檢測到固定隧道 TOKEN，正在以【固定隧道】模式啟動..."
+        nohup ./cloudflared-linux \
+            --edge-ip-version "$IPS" \
+            --protocol http2 \
+            tunnel --no-autoupdate run --token "$TOKEN" \
+            > /dev/null 2>&1 &
+        CF_PID=$!
+        
+        echo "--- ECH + Cloudflared 固定隧道啟動成功 ---"
+        echo "請確保你在 Cloudflare Dashboard 中已將該隧道綁定至正確的自定義域名與本地端口 $ECHPORT"
+    else
+        echo "未檢測到 TOKEN，正在以【臨時隧道（TryCloudflare）】模式啟動..."
+        nohup ./cloudflared-linux \
+            --edge-ip-version "$IPS" \
+            --protocol http2 \
+            tunnel --url "127.0.0.1:$ECHPORT" \
+            --metrics "0.0.0.0:$metricsport" \
+            > /dev/null 2>&1 &
+        CF_PID=$!
 
-    # 4) 获取 Argo 域名
-    while true; do
-        echo "正在嘗試獲取 Argo 域名..."
-        RESP=$(curl -s "http://127.0.0.1:$metricsport/metrics" || true)
+        # 4) 获取 Argo 域名（僅在臨時隧道模式下才需要獲取並等待）
+        while true; do
+            echo "正在嘗試獲取 Argo 域名..."
+            RESP=$(curl -s "http://127.0.0.1:$metricsport/metrics" || true)
 
-        if echo "$RESP" | grep -q 'userHostname='; then
-            echo "獲取成功，正在解析..."
-            DOMAIN=$(echo "$RESP" | grep 'userHostname="' | sed -E 's/.*userHostname="https?:\/\/([^"]+)".*/\1/')
+            if echo "$RESP" | grep -q 'userHostname='; then
+                echo "獲取成功，正在解析..."
+                DOMAIN=$(echo "$RESP" | grep 'userHostname="' | sed -E 's/.*userHostname="https?:\/\/([^"]+)".*/\1/')
 
-            echo "--- ECH + Cloudflared 啟動成功 ---"
-            if [ -z "$TOKEN" ]; then
+                echo "--- ECH + Cloudflared 臨時隧道啟動成功 ---"
                 echo "未設置 token, 連接為: $DOMAIN:443"
+                break
             else
-                echo "已設置 token, 連接為: $DOMAIN:443 （token 不顯示）"
+                echo "未獲取到 userHostname，5秒後重試..."
+                sleep 5
             fi
-            break
-        else
-            echo "未獲取到 userHostname，5秒後重試..."
-            sleep 5
-        fi
-    done
+        done
+    fi
 }
 
 # ---------------- main ----------------
