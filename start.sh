@@ -107,20 +107,32 @@ quicktunnel() {
     # 判斷變數中是否有固定隧道的 TOKEN
     if [ -n "$TOKEN" ]; then
         echo "檢測到固定隧道 TOKEN，正在以【固定隧道】模式啟動..."
+        # 1. 調整為更穩定的 quic 協議（如果環境封鎖 udp 可以改回 http2）
+        # 2. 將日誌導出到 /tmp/cf.log，不再盲目丟棄
         nohup ./cloudflared-linux \
             --edge-ip-version "$IPS" \
-            --protocol http2 \
+            --protocol quic \
             tunnel --no-autoupdate run --token "$TOKEN" \
-            > /dev/null 2>&1 &
+            > /tmp/cf.log 2>&1 &
         CF_PID=$!
         
-        echo "--- ECH + Cloudflared 固定隧道啟動成功 ---"
+        echo "--- ECH + Cloudflared 固定隧道指令已發送 ---"
         echo "請確保你在 Cloudflare Dashboard 中已將該隧道綁定至正確的自定義域名與本地端口 $ECHPORT"
+        
+        # 這裡稍等兩秒，抓取 Cloudflared 的初始化日誌直接打印到控制台
+        sleep 2
+        echo "=== [DEBUG] 檢查 Cloudflared 啟動初期日誌 ==="
+        if [ -f /tmp/cf.log ]; then
+            cat /tmp/cf.log
+        else
+            echo "未找到日誌檔案 /tmp/cf.log"
+        fi
+        echo "============================================="
     else
         echo "未檢測到 TOKEN，正在以【臨時隧道（TryCloudflare）】模式啟動..."
         nohup ./cloudflared-linux \
             --edge-ip-version "$IPS" \
-            --protocol http2 \
+            --protocol quic \
             tunnel --url "127.0.0.1:$ECHPORT" \
             --metrics "0.0.0.0:$metricsport" \
             > /dev/null 2>&1 &
