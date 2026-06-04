@@ -22,7 +22,7 @@ quicktunnel() {
 
     case "$ARCH" in
         x86_64 | x64 | amd64 )
-            ECH_URL="https://github.com/webappstars/ech-hug/releases/download/3.0/ech-tunnel-linux-amd64"
+            ECH_URL="https://github.com/dsadsadsss/ECH-Tunnel-Go/releases/download/xech/x-tunnel-linux-amd64"
             OPERA_URL="https://github.com/Snawoot/opera-proxy/releases/latest/download/opera-proxy.linux-amd64"
             CLOUDFLARED_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
             ;;
