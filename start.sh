@@ -8,9 +8,8 @@ get_free_port() {
 
 quicktunnel() {
     echo "--- 正在強制設定 DNS 為 1.1.1.1/1.0.0.1 ---"
-    echo "nameserver 1.1.1.1" > /etc/resolv.conf
-    echo "nameserver 1.0.0.1" >> /etc/resolv.conf
-
+    echo "nameserver 1.1.1.1" > /etc/resolv.conf 2>/dev/null || echo "WARN: DNS 設定失敗，已跳過。"
+    echo "nameserver 1.0.0.1" >> /etc/resolv.conf 2>/dev/null || true
     echo "--- 正在下載服務二進制文件 ---"
 
     local ARCH
