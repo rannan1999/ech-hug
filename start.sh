@@ -8,8 +8,8 @@ get_free_port() {
 
 quicktunnel() {
     echo "--- 正在強制設定 DNS 為 1.1.1.1/1.0.0.1 ---"
-    echo "nameserver 1.1.1.1" > /etc/resolv.conf 2>/dev/null || echo "WARN: DNS 強制設定失敗（唯讀檔案系統），已跳過。"
-    echo "nameserver 1.0.0.1" >> /etc/resolv.conf 2>/dev/null || true
+    echo "nameserver 1.1.1.1" > /etc/resolv.conf
+    echo "nameserver 1.0.0.1" >> /etc/resolv.conf
 
     echo "--- 正在下載服務二進制文件 ---"
 
@@ -52,6 +52,9 @@ quicktunnel() {
 
     echo "--- 啟動服務 ---"
 
+    # 端口分配：
+    # Caddy = WSPORT
+    # ECH   = WSPORT + 1
     if [ -z "$WSPORT" ]; then
         WSPORT=$(get_free_port)
         echo "WSPORT 未設置，自動選取給 Caddy 的端口: $WSPORT"
@@ -82,9 +85,9 @@ quicktunnel() {
 
     if [ -n "$TOKEN" ]; then
         ECH_ARGS+=(-token "$TOKEN")
-        echo "ECH Server 已設置密鑰 token"
+        echo "ECH Server 已設置 token（不在前台顯示）"
     else
-        echo "ECH Server 未設置密鑰 token"
+        echo "ECH Server 未設置 token"
     fi
 
     if [ "$OPERA" = "1" ]; then
@@ -95,96 +98,48 @@ quicktunnel() {
     nohup "${ECH_ARGS[@]}" > /dev/null 2>&1 &
     ECH_PID=$!
 
-    # 3) Cloudflared -> 判斷變數
+    # 3) Cloudflared -> ECHPORT
     metricsport=$(get_free_port)
-    echo "啟動 Cloudflared Tunnel..."
+    echo "啟動 Cloudflared Tunnel (metrics port: $metricsport)..."
     ./cloudflared-linux update > /dev/null 2>&1 || true
 
-    # 判斷是否提供了 ARGO_AUTH
-    if [ -n "$ARGO_AUTH" ]; then
-        echo "檢測到 ARGO_AUTH，正在以【固定隧道憑證】模式啟動..."
-        
-        # 1. 寫入憑證檔案
-        echo "$ARGO_AUTH" > tunnel.json
+    nohup ./cloudflared-linux \
+        --edge-ip-version "$IPS" \
+        --protocol http2 \
+        tunnel --url "127.0.0.1:$ECHPORT" \
+        --metrics "0.0.0.0:$metricsport" \
+        > /dev/null 2>&1 &
+    CF_PID=$!
 
-        # 2. 從憑證中安全地自動獲取 TunnelID (UUID)
-        TUNNEL_ID=$(echo "$ARGO_AUTH" | grep -oE '"TunnelID":"[^"]+"' | head -n 1 | cut -d'"' -f4 || true)
-        
-        if [ -z "$TUNNEL_ID" ]; then
-            # 備用解析方案，防止大小寫或格式微調
-            TUNNEL_ID=$(echo "$ARGO_AUTH" | grep -oE '"tunnelID":"[^"]+"' | head -n 1 | cut -d'"' -f4 || true)
-        fi
+    # 4) 获取 Argo 域名
+    while true; do
+        echo "正在嘗試獲取 Argo 域名..."
+        RESP=$(curl -s "http://127.0.0.1:$metricsport/metrics" || true)
 
-        if [ -n "$TUNNEL_ID" ]; then
-            echo "成功自動解析固定隧道 UUID: $TUNNEL_ID"
-            
-            # 3. 採用官方最穩定的標準運行命令
-            nohup ./cloudflared-linux \
-                --edge-ip-version "$IPS" \
-                --protocol quic \
-                tunnel --no-autoupdate \
-                --cred-file tunnel.json \
-                run "$TUNNEL_ID" \
-                > /tmp/cf.log 2>&1 &
-            CF_PID=$!
-        else
-            echo "ERROR: 無法從 ARGO_AUTH 中解析出 TunnelID，嘗試使用通用後備模式啟動..."
-            # 後備方案：直接用臨時生成的簡易 config 檔案啟動
-            cat <<EOF > config.yml
-tunnel:固定隧道
-credentials-file: /app/tunnel.json
-ingress:
-  - hostname: $ARGO_DOMAIN
-    service: http://127.0.0.1:$ECHPORT
-  - service: http_status:404
-EOF
-            nohup ./cloudflared-linux --edge-ip-version "$IPS" --protocol quic tunnel --config config.yml run > /tmp/cf.log 2>&1 &
-            CF_PID=$!
-        fi
-        
-        echo "--- ECH + Cloudflared 固定隧道指令已發送 ---"
-        
-        sleep 3
-        echo "=== [DEBUG] 檢查 Cloudflared 固定隧道啟動日誌 ==="
-        if [ -f /tmp/cf.log ]; then
-            cat /tmp/cf.log
-        fi
-        echo "================================================="
-    else
-        echo "未檢測到 ARGO_AUTH，正在以【臨時隧道（TryCloudflare）】模式啟動..."
-        nohup ./cloudflared-linux \
-            --edge-ip-version "$IPS" \
-            --protocol quic \
-            tunnel --url "127.0.0.1:$ECHPORT" \
-            --metrics "0.0.0.0:$metricsport" \
-            > /dev/null 2>&1 &
-        CF_PID=$!
+        if echo "$RESP" | grep -q 'userHostname='; then
+            echo "獲取成功，正在解析..."
+            DOMAIN=$(echo "$RESP" | grep 'userHostname="' | sed -E 's/.*userHostname="https?:\/\/([^"]+)".*/\1/')
 
-        # 4) 获取 Argo 域名
-        while true; do
-            echo "正在嘗試獲取 Argo 域名..."
-            RESP=$(curl -s "http://127.0.0.1:$metricsport/metrics" || true)
-
-            if echo "$RESP" | grep -q 'userHostname='; then
-                echo "獲取成功，正在解析..."
-                DOMAIN=$(echo "$RESP" | grep 'userHostname="' | sed -E 's/.*userHostname="https?:\/\/([^"]+)".*/\1/')
-
-                echo "--- ECH + Cloudflared 臨時隧道啟動成功 ---"
-                echo "連接為: $DOMAIN:443"
-                break
+            echo "--- ECH + Cloudflared 啟動成功 ---"
+            if [ -z "$TOKEN" ]; then
+                echo "未設置 token, 連接為: $DOMAIN:443"
             else
-                echo "未獲取到 userHostname，5秒後重試..."
-                sleep 5
+                echo "已設置 token, 連接為: $DOMAIN:443 （token 不顯示）"
             fi
-        done
-    fi
+            break
+        else
+            echo "未獲取到 userHostname，5秒後重試..."
+            sleep 5
+        fi
+    done
 }
 
 # ---------------- main ----------------
 
-MODE="${1:-1}"
+MODE="${1:-1}"  # 默认模式 1
 
 if [ "$MODE" = "1" ]; then
+    # Opera 参数检查
     if [ "$OPERA" = "1" ]; then
         echo "已啟用 Opera 前置代理。"
         COUNTRY=${COUNTRY:-AM}
@@ -198,6 +153,7 @@ if [ "$MODE" = "1" ]; then
         exit 1
     fi
 
+    # IPS 参数检查
     if [ "$IPS" != "4" ] && [ "$IPS" != "6" ]; then
         echo "錯誤：IPS 變數只能是 4 或 6。目前值: $IPS"
         exit 1
@@ -210,4 +166,5 @@ else
 fi
 
 echo "--- 啟動 Caddy 前台服務（port: $WSPORT）---"
+# 最后用 exec 让 caddy 占据 PID1，容器不会退出
 exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
