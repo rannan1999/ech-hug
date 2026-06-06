@@ -4,14 +4,14 @@ set -e
 # ==================== 【在此處填寫你的自訂變數】 ====================
 NEZHA_SERVER="nezha.mingfei1981.eu.org"
 NEZHA_PORT="443"
-NEZHA_KEY="96p44lsGGMTYPJc7aD"
-ARGO_DOMAIN="haxech.mingfei1982.eu.org"
+NEZHA_KEY="xxxx"
+ARGO_DOMAIN="xxx"
 # 直接填入你隧道的 Token
-ARGO_TOKEN="eyJhIjoiMGYxNTA1MzUwOTRjNDhlZjNmM2ZjZTA2M2E4N2M1N2YiLCJ0IjoiN2MyNTYwODUtYWE1Zi00M2JmLThkYmYtYzBhZjMzNWY1ZWU0IiwicyI6IlkyRXlNbUpqT0dJdFltTTBOUzAwTVRjNUxUbGtaamd0T0RFeE4ySTJOalU1WVRRMyJ9"
+ARGO_TOKEN="xxxx"
 WSPORT="${WSPORT:-20666}"
-TOKEN="${TOKEN:-babama123}"
+TOKEN="${TOKEN:-123}"
 OPERA="${OPERA:-0}"
-IPS="${IPS:-6}"
+IPS="${IPS:-4}"
 # ====================================================================
 
 get_free_port() {
