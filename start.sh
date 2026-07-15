@@ -2,16 +2,16 @@
 set -e
 
 # ==================== 【在此處填寫你的自訂變數】 ====================
-NEZHA_SERVER="nezha.mingfei1981.eu.org"
-NEZHA_PORT="443"
-NEZHA_KEY="xxxx"
-ARGO_DOMAIN="xxx"
+NEZHA_SERVER=""
+NEZHA_PORT=""
+NEZHA_KEY=""
+ARGO_DOMAIN=""
 # 直接填入你隧道的 Token
-ARGO_TOKEN="xxxx"
-WSPORT="${WSPORT:-20666}"
-TOKEN="${TOKEN:-123}"
-OPERA="${OPERA:-0}"
-IPS="${IPS:-4}"
+ARGO_TOKEN=""
+WSPORT="${WSPORT:-}"
+TOKEN="${TOKEN:-}"
+OPERA="${OPERA:-}"
+IPS="${IPS:-}"
 # ====================================================================
 
 get_free_port() {
